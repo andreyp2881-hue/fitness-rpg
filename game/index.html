@@ -27,7 +27,7 @@
 <!-- Панель со статистикой монстра и игрока -->
 <div id="game-ui">
     <div id="mob-container">
-        <img id="mob-img" class="mob-pic" src="game/slime.png">
+        <img id="mob-img" class="mob-pic" src="slime.png">
         <div style="text-align: left;">
             <div id="mob-name" class="mob-title">Слизень-Лежебока (Волна 1)</div>
             <div id="mob-hp" class="hp-text">HP: 5 / 5</div>
@@ -59,14 +59,12 @@
     let currentMobIdx = 0;
     let wave = 1;
     
-    const mobs = [
-        { name: "Слизень-Лежебока", baseHp: 5, img: "game/slime.png" },
-        { name: "Гоблин-Торопыга", baseHp: 10, img: "game/goblin.png" },
-        { name: "Каменный Голем", baseHp: 15, img: "game/golem.png" },
-        { name: "Орк-Надзиратель", baseHp: 25, img: "game/orc.png" }
-    ];
-
-    
+   const mobs = [
+    { name: "Слизень-Лежебока", baseHp: 5, img: "slime.png" },
+    { name: "Гоблин-Торопыга", baseHp: 10, img: "goblin.png" },
+    { name: "Каменный Голем", baseHp: 15, img: "golem.png" },
+    { name: "Орк-Надзиратель", baseHp: 25, img: "orc.png" }
+];
     let maxMobHp = mobs[0].baseHp;
     let currentMobHp = maxMobHp;
 
