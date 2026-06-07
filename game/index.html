@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Push-Up RPG Live</title>
+    
+    <!-- Подключаем ИИ MediaPipe для поиска тела на телефоне -->
+    <script src="https://jsdelivr.net" crossorigin="anonymous"></script>
+    <script src="https://jsdelivr.net" crossorigin="anonymous"></script>
+    <script src="https://jsdelivr.net" crossorigin="anonymous"></script>
+    
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; padding: 10px; }
+        #game-ui { display: flex; justify-content: space-around; background: #1e1e1e; padding: 15px; border-radius: 10px; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .mob-title { font-size: 20px; font-weight: bold; color: #ff4b4b; }
+        .hp-text { font-size: 18px; font-weight: bold; color: #bbb; }
+        .status-text { font-size: 16px; font-weight: bold; color: #007bff; margin: 5px 0; }
+        #video-container { position: relative; width: 100%; max-width: 480px; margin: 0 auto; aspect-ratio: 4/3; }
+        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 10px; transform: scaleX(-1); }
+        #mob-container { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
+        .mob-pic { width: 80px; height: 80px; object-fit: contain; }
+    </style>
+</head>
+<body>
+
+<!-- Панель со статистикой монстра и игрока -->
+<div id="game-ui">
+    <div id="mob-container">
+        <img id="mob-img" class="mob-pic" src="slime.png">
+        <div style="text-align: left;">
+            <div id="mob-name" class="mob-title">Слизень-Лежебока (Волна 1)</div>
+            <div id="mob-hp" class="hp-text">HP: 5 / 5</div>
+        </div>
+    </div>
+    <div>
+        <div style="font-size: 14px; color: #888;">ОТЖИМАНИЯ</div>
+        <div id="pushup-count" style="font-size: 32px; font-weight: bold; color: #28a745;">0</div>
+    </div>
+</div>
+
+<!-- Текстовый статус для подсказок -->
+<div id="status" class="status-text">Запрос доступа к камере...</div>
+
+<!-- Контейнер для вывода видео и наложения точек ИИ -->
+<div id="video-container">
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="output_canvas"></canvas>
+</div>
+
+<script>
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const mobImgElement = document.getElementById('mob-img');
+    
+    let counter = 0;
+    let stage = "up";
+    let currentMobIdx = 0;
+    let wave = 1;
+    
+    // База мобов с их картинками
+    const mobs = [
+        { name: "Слизень-Лежебока", baseHp: 5, img: "slime.png" },
+        { name: "Гоблин-Торопыга", baseHp: 10, img: "goblin.png" },
+        { name: "Каменный Голем", baseHp: 15, img: "golem.png" },
+        { name: "Орк-Надзиратель", baseHp: 25, img: "orc.png" }
+    ];
+    
+    let maxMobHp = mobs[0].baseHp;
+    let currentMobHp = maxMobHp;
+
+    // Расчет угла в локте
+    function calculateAngle(p1, p2, p3) {
+        let radians = Math.atan2(p3.y - p2.y, p3.x - p2.x) - Math.atan2(p1.y - p2.y, p1.x - p2.x);
+        let angle = Math.abs((radians * 180.0) / Math.PI);
+        if (angle > 180.0) angle = 360 - angle;
+        return angle;
+    }
+
+    // Обработка кадров нейросетью
+    function onResults(results) {
+        if (!results.poseLandmarks) {
+            document.getElementById('status').innerText = "Положите телефон на пол и встаньте боком в кадр полностью";
+            document.getElementById('status').style.color = "#ff4b4b";
+            return;
+        }
+
+        document.getElementById('status').innerText = "ИИ видит ваше тело! Начинайте отжиматься!";
+        document.getElementById('status').style.color = "#28a745";
+        
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        
+        // Рисуем линии скелета поверх вашего видео
+        drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 3});
+        drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 1, radius: 4});
+
+        try {
+            // Точки тела: Плечо (11), Локоть (13), Запястье (15)
+            const shoulder = results.poseLandmarks[11];
+            const elbow = results.poseLandmarks[13];
+            const wrist = results.poseLandmarks[15];
+
+            if (shoulder && elbow && wrist) {
+                const angle = calculateAngle(shoulder, elbow, wrist);
+
+                // Логика фиксации нижней точки (руки согнуты)
+                if (angle < 95 && stage !== "down") {
+                    stage = "down";
+                }
+                
+                // Логика фиксации верхней точки (руки выпрямлены — засчитываем повторение)
+                if (angle > 150 && stage === "down") {
+                    stage = "up";
+                    counter++;
+                    currentMobHp--;
+                    
+                    document.getElementById('pushup-count').innerText = counter;
+
+                    // Проверяем, погиб ли монстр
+                    if (currentMobHp <= 0) {
+                        currentMobIdx++;
+                        
+                        // Если прошли круг, запускаем новую волну и увеличиваем HP врагов на 20%
+                        if (currentMobIdx >= mobs.length) {
+                            currentMobIdx = 0;
+                            wave++;
+                        }
+                        
+                        let nextMob = mobs[currentMobIdx];
+                        maxMobHp = Math.floor(nextMob.baseHp * (1 + (wave - 1) * 0.2));
+                        currentMobHp = maxMobHp;
+                        
+                        // Меняем имя и картинку моба на экране
+                        document.getElementById('mob-name').innerText = nextMob.name + ` (Волна ${wave})`;
+                        mobImgElement.src = nextMob.img;
+                    }
+                    
+                    document.getElementById('mob-hp').innerText = `HP: ${currentMobHp} / ${maxMobHp}`;
+                }
+            }
+        } catch (err) {
+            console.error(err);
+        }
+        canvasCtx.restore();
+    }
+
+    // Запуск детектора поз MediaPipe
+    const pose = new Pose({locateFile: (file) => {
+        return `https://jsdelivr.net{file}`;
+    }});
+    
+    pose.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+    pose.onResults(onResults);
+
+    // Запуск фронтальной камеры смартфона
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await pose.send({image: videoElement});
+        },
+        width: 480,
+        height: 360
+    });
+    
+    camera.start().catch(err => {
+        document.getElementById('status').innerText = "Ошибка: Дайте сайту разрешение на использование камеры!";
+        document.getElementById('status').style.color = "#ff4b4b";
+    });
+</script>
+
+</body>
+</html>
